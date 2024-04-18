@@ -1,0 +1,157 @@
+import hashlib
+import secrets
+import getpass
+import random
+import math
+from typing import Dict, Optional
+
+class Paillier:
+    def __init__(self, bit_length: int = 2048) -> None:
+        self.n, self.lmbda, self.mu = self.generate_paillier_keys(bit_length)
+
+    def generate_paillier_keys(self, bit_length: int) -> tuple:
+        p = self.generate_prime(bit_length // 2)
+        q = self.generate_prime(bit_length // 2)
+        n = p * q
+        phi = (p - 1) * (q - 1)
+        lmbda = phi // math.gcd(p - 1, q - 1)
+        mu = pow(n, -1, phi)
+        return n, lmbda, mu
+
+    def generate_prime(self, bit_length: int) -> int:
+        num = random.getrandbits(bit_length)
+        while not self.is_prime(num):
+            num = random.getrandbits(bit_length)
+        return num
+
+    def is_prime(self, x: int) -> bool:
+        if x <= 1:
+            return False
+        for i in range(2, int(math.sqrt(x)) + 1):
+            if x % i == 0:
+                return False
+        return True
+
+    def encrypt(self, m: int, r: int) -> int:
+        return (pow(self.n + 1, m, self.n * self.n) * pow(r, self.n, self.n * self.n)) % (self.n * self.n)
+
+    def decrypt(self, c: int) -> int:
+        return (self.lx(pow(c, self.lmbda, self.n * self.n)) * self.mu) % self.n
+
+    def lx(self, x: int) -> int:
+        return (x - 1) // self.n
+
+class User:
+    def __init__(self, username: str, password: str, paillier: Paillier) -> None:
+        self.username = username
+        self.salt = secrets.token_hex(16)  # Generate a random salt
+        self.password_hash = self._hash_password(password)
+        self.paillier = paillier
+        self.private_key = rsa.generate_private_key(
+            public_exponent=65537,
+            key_size=2048
+        )
+        self.public_key = self.private_key.public_key()
+
+    def _hash_password(self, password: str) -> str:
+        # Hash the password using SHA-256 algorithm and salt
+        password_salt = password.encode() + self.salt.encode()
+        digest = hashlib.sha256(password_salt).hexdigest()
+        return digest
+
+    def verify_password(self, password: str) -> bool:
+        # Verify if the given password matches the stored hash
+        return self.password_hash == self._hash_password(password)
+
+    def sign_data(self, data: bytes) -> bytes:
+        # Sign data using user's private key
+        signature = self.private_key.sign(
+            data,
+            padding.PSS(
+                mgf=padding.MGF1(hashes.SHA256()),
+                salt_length=padding.PSS.MAX_LENGTH
+            ),
+            hashes.SHA256()
+        )
+        return signature
+
+    def verify_signature(self, data: bytes, signature: bytes) -> bool:
+        # Verify signature using user's public key
+        try:
+            self.public_key.verify(
+                signature,
+                data,
+                padding.PSS(
+                    mgf=padding.MGF1(hashes.SHA256()),
+                    salt_length=padding.PSS.MAX_LENGTH
+                ),
+                hashes.SHA256()
+            )
+            return True
+        except Exception:
+            return False
+
+    def store_input(self, input_value: int) -> None:
+        # Encrypt and store the input value using Paillier's encryption
+        self.stored_input_encrypted = self.paillier.encrypt(input_value, random.randint(1, self.paillier.n))
+
+    def get_stored_input(self) -> Optional[int]:
+        # Decrypt and return the stored input value
+        if hasattr(self, 'stored_input_encrypted'):
+            return self.paillier.decrypt(self.stored_input_encrypted)
+        else:
+            return None
+
+class SecureApp:
+    def __init__(self) -> None:
+        self.users: Dict[str, User] = {}
+        self.paillier = Paillier()
+
+    def register_user(self, username: str) -> None:
+        # Register a new user
+        if username in self.users:
+            print("Username already exists. Please choose a different username.")
+            return
+        password = getpass.getpass("Enter password: ")
+        user = User(username, password, self.paillier)
+        self.users[username] = user
+        print("User registered successfully.")
+
+    def login(self, username: str) -> Optional[User]:
+        # Log in the user
+        user = self.users.get(username)
+        if not user:
+            print("User not found.")
+            return None
+        password = getpass.getpass("Enter password: ")
+        if user.verify_password(password):
+            print("Login successful.")
+            return user
+        else:
+            print("Invalid password.")
+            return None
+
+def main() -> None:
+    app = SecureApp()
+
+    # Register a new user
+    username = input("Enter username: ")
+    app.register_user(username)
+
+    # Attempt login
+    username = input("Enter username: ")
+    user = app.login(username)
+    if user:
+        # After successful login, ask for input and store it
+        input_value = int(input("Enter value to store: "))
+        user.store_input(input_value)
+        print("Stored input value:", input_value)
+        # Display the decrypted stored input value
+        stored_input = user.get_stored_input()
+        if stored_input is not None:
+            print("Decrypted stored input value:", stored_input)
+        else:
+            print("No stored input value.")
+
+if __name__ == "__main__":
+    main()
